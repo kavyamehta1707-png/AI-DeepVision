@@ -1,0 +1,34 @@
+Crowd Monitoring Project
+
+ShanghaiTech Dataset : 
+	
+=> The dataset was proposed in the paper “Single‑Image Crowd Counting via Multi‑Column Convolutional Neural Network” (Zhang et al., 2016). 
+=> It contains roughly 1,198 images in total with about 330,000 annotated head locations.
+=> It is split into Part A and Part B:
+      <> Part A: 482 images, higher crowd density (crawled from internet) 
+      <> Part B: 716 images, lower to moderate density (busy streets of Shanghai) 
+   Further, each part is divided into training and testing subsets and each subset contain images and ground-truth folders.
+      <> images/        
+	- Contains the crowd scene pictures — real images with many people.
+      <> ground-truth/  
+	- Contains the annotations for each image.
+	- Each .mat file (MATLAB file) contains the coordinates of each person’s head position.
+
+=> The folder structure looks like :
+	ShanghaiTech/
+    	    |-Part_A/
+        	|-train_data/
+            	     |-images/
+            	     |-ground_truth/
+        	|-test_data/
+            	     |-images/
+            	     |-ground_truth/
+            |-Part_B/
+        	|-train_data/
+            	     |-images/
+            	     |-ground_truth/
+        	|-test_data/
+            	     |-images/
+                     |-ground_truth/
+
+Preprocessing : 
