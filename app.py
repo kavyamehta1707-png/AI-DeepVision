@@ -6,14 +6,12 @@ import numpy as np
 from flask import Flask, render_template, request
 from torchvision import models, transforms
 
-# ================= BASIC CONFIG =================
-UPLOAD_FOLDER = "uploads"
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+# ================= FLASK CONFIG =================
+app = Flask(__name__)
+STATIC_FOLDER = "static"
+os.makedirs(STATIC_FOLDER, exist_ok=True)
 
 device = torch.device("cpu")
-
-app = Flask(__name__)
-app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 
 # ================= CSRNet MODEL =================
 class CSRNet(nn.Module):
@@ -37,14 +35,14 @@ class CSRNet(nn.Module):
         x = self.output_layer(x)
         return x
 
-# ================= LOAD TRAINED MODEL =================
+# ================= LOAD MODEL =================
 print("Loading model_5.pth...")
 model = CSRNet().to(device)
 model.load_state_dict(torch.load("model_5.pth", map_location=device))
 model.eval()
 print("Model loaded successfully")
 
-# ================= IMAGE TRANSFORM =================
+# ================= TRANSFORM =================
 transform = transforms.Compose([
     transforms.ToTensor(),
     transforms.Normalize(
@@ -59,81 +57,72 @@ def process_video(video_path):
 
     fps = cap.get(cv2.CAP_PROP_FPS)
     if fps == 0:
-        fps = 25  # safety fallback
+        fps = 25
 
-    frame_step = int(fps * 2)  # process every 2 seconds
-    frame_step = max(1, frame_step)
-
+    step = max(1, int(fps * 2))  # every 2 seconds
     frame_count = 0
-    processed_frames = 0
+    processed = 0
     total_count = 0
     heatmap_saved = False
 
-    while cap.isOpened() and processed_frames < 10:
+    while cap.isOpened() and processed < 10:
         ret, frame = cap.read()
         if not ret:
             break
 
         frame_count += 1
-        if frame_count % frame_step != 0:
+        if frame_count % step != 0:
             continue
 
-        processed_frames += 1
+        processed += 1
         h, w = frame.shape[:2]
 
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        tensor = transform(rgb).unsqueeze(0).to(device)
+        img = transform(rgb).unsqueeze(0).to(device)
 
         with torch.no_grad():
-            density = torch.relu(model(tensor))
+            density = torch.relu(model(img))
 
         count = int(density.sum().item())
         total_count += count
 
-        # Save ONE heatmap image
         if not heatmap_saved:
             density_map = density.squeeze().cpu().numpy()
             density_map = cv2.resize(density_map, (w, h))
 
-            heatmap = cv2.normalize(
-                density_map, None, 0, 255, cv2.NORM_MINMAX
-            )
+            heatmap = cv2.normalize(density_map, None, 0, 255, cv2.NORM_MINMAX)
             heatmap = cv2.applyColorMap(
                 heatmap.astype(np.uint8), cv2.COLORMAP_JET
             )
 
             overlay = cv2.addWeighted(frame, 0.6, heatmap, 0.4, 0)
-            cv2.imwrite(os.path.join(UPLOAD_FOLDER, "output.jpg"), overlay)
+            cv2.imwrite("static/output.jpg", overlay)
 
             heatmap_saved = True
 
     cap.release()
 
-    avg_count = total_count // max(1, processed_frames)
+    avg_count = total_count // max(1, processed)
     return avg_count
 
 # ================= FLASK ROUTE =================
 @app.route("/", methods=["GET", "POST"])
 def index():
     result = None
-    image_path = None
+    image = None
 
     if request.method == "POST":
         file = request.files.get("file")
         if file:
-            save_path = os.path.join(app.config["UPLOAD_FOLDER"], file.filename)
-            file.save(save_path)
+            video_path = os.path.join(STATIC_FOLDER, file.filename)
+            file.save(video_path)
 
             if file.filename.lower().endswith((".mp4", ".avi", ".mov")):
-                result = process_video(save_path)
-                image_path = "uploads/output.jpg"
+                result = process_video(video_path)
+                image = True
 
-    return render_template(
-        "index.html",
-        result=result,
-        image=image_path
-    )
+    return render_template("index.html", result=result, image=image)
 
-# ================= RUN APP =================
+# ================= RUN =================
 if __name__ == "__main__":
     app.run(debug=True)
