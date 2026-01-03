@@ -5,6 +5,7 @@ import torch.nn as nn
 import numpy as np
 from torchvision import models, transforms
 import tempfile
+import os
 
 # -----------------------
 # DEVICE
@@ -33,12 +34,16 @@ class CSRNet(nn.Module):
         return self.output_layer(self.backend(self.frontend(x)))
 
 # -----------------------
-# LOAD MODEL
+# LOAD MODEL (FIXED PATH)
 # -----------------------
 @st.cache_resource
 def load_model():
     model = CSRNet().to(device)
-    model.load_state_dict(torch.load("model_5.pth", map_location=device))
+
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+    MODEL_PATH = os.path.join(BASE_DIR, "model_5.pth")
+
+    model.load_state_dict(torch.load(MODEL_PATH, map_location=device))
     model.eval()
     return model
 
