@@ -39,11 +39,17 @@ class CSRNet(nn.Module):
 @st.cache_resource
 def load_model():
     model = CSRNet().to(device)
+    
+    # Use a relative path directly; Streamlit runs from the repo root
+    MODEL_PATH = "model_5.pth" 
 
-    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-    MODEL_PATH = os.path.join(BASE_DIR, "model_5.pth")
+    if not os.path.exists(MODEL_PATH):
+        st.error(f"Error: {MODEL_PATH} not found. Check if Git LFS succeeded.")
+        return None
 
-    model.load_state_dict(torch.load(MODEL_PATH, map_location=device))
+    # This map_location ensures it works even if you trained on GPU but deploy on CPU
+    state_dict = torch.load(MODEL_PATH, map_location=device)
+    model.load_state_dict(state_dict)
     model.eval()
     return model
 
