@@ -37,14 +37,20 @@ class CSRNet(nn.Module):
 # -----------------------
 @st.cache_resource
 def load_model():
-    base_path=os.path.dirname(_file_)
-    model_path=os.path.join(base_path,"model_5.pth")
-    
-                            
     model = CSRNet().to(device)
-    model.load_state_dict(torch.load(model_path,map_location=device))
+
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+    MODEL_PATH = os.path.join(BASE_DIR, "model_5.pth")
+
+    if not os.path.exists(MODEL_PATH):
+        st.error(f"Model file not found at: {MODEL_PATH}")
+        st.stop()
+
+    state_dict = torch.load(MODEL_PATH, map_location=device)
+    model.load_state_dict(state_dict)
     model.eval()
     return model
+
 
 model = load_model()
 
