@@ -41,7 +41,7 @@ def load_model():
     model = CSRNet().to(device)
     
     # Use a relative path directly; Streamlit runs from the repo root
-    MODEL_PATH = "model_5.pth" 
+    MODEL_PATH = "crowd_streamlit/model_5.pth" 
 
     if not os.path.exists(MODEL_PATH):
         st.error(f"Error: {MODEL_PATH} not found. Check if Git LFS succeeded.")
