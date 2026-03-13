@@ -1,259 +1,157 @@
-<<<<<<< HEAD
 import os
 import cv2
 import torch
 import torch.nn as nn
 import numpy as np
-from flask import Flask, render_template, request
+import streamlit as st
 from torchvision import models, transforms
-
-# ================= FLASK CONFIG =================
-app = Flask(__name__)
-STATIC_FOLDER = "static"
-os.makedirs(STATIC_FOLDER, exist_ok=True)
 
 device = torch.device("cpu")
 
-# ================= CSRNet MODEL =================
+# ---------------- PAGE CONFIG ----------------
+st.set_page_config(
+    page_title="Crowd Counting Dashboard",
+    layout="wide"
+)
+
+st.title("AI Crowd Density Monitoring Dashboard")
+
+# ---------------- MODEL ----------------
 class CSRNet(nn.Module):
     def __init__(self):
         super().__init__()
         vgg = models.vgg16(weights=None)
         self.frontend = nn.Sequential(*list(vgg.features.children())[:23])
         self.backend = nn.Sequential(
-            nn.Conv2d(512, 512, 3, padding=2, dilation=2), nn.ReLU(),
-            nn.Conv2d(512, 512, 3, padding=2, dilation=2), nn.ReLU(),
-            nn.Conv2d(512, 512, 3, padding=2, dilation=2), nn.ReLU(),
-            nn.Conv2d(512, 256, 3, padding=2, dilation=2), nn.ReLU(),
-            nn.Conv2d(256, 128, 3, padding=2, dilation=2), nn.ReLU(),
-            nn.Conv2d(128, 64, 3, padding=2, dilation=2), nn.ReLU(),
+            nn.Conv2d(512,512,3,padding=2,dilation=2), nn.ReLU(),
+            nn.Conv2d(512,512,3,padding=2,dilation=2), nn.ReLU(),
+            nn.Conv2d(512,512,3,padding=2,dilation=2), nn.ReLU(),
+            nn.Conv2d(512,256,3,padding=2,dilation=2), nn.ReLU(),
+            nn.Conv2d(256,128,3,padding=2,dilation=2), nn.ReLU(),
+            nn.Conv2d(128,64,3,padding=2,dilation=2), nn.ReLU(),
         )
-        self.output_layer = nn.Conv2d(64, 1, 1)
+        self.output_layer = nn.Conv2d(64,1,1)
 
-    def forward(self, x):
-        x = self.frontend(x)
-        x = self.backend(x)
-        x = self.output_layer(x)
+    def forward(self,x):
+        x=self.frontend(x)
+        x=self.backend(x)
+        x=self.output_layer(x)
         return x
 
-# ================= LOAD MODEL =================
-print("Loading model_5.pth...")
-model = CSRNet().to(device)
-model.load_state_dict(torch.load("model_5.pth", map_location=device))
-model.eval()
-print("Model loaded successfully")
+@st.cache_resource
+def load_model():
+    model = CSRNet().to(device)
+    model.load_state_dict(torch.load("model_5.pth",map_location=device))
+    model.eval()
+    return model
 
-# ================= TRANSFORM =================
+model = load_model()
+
+# ---------------- TRANSFORM ----------------
 transform = transforms.Compose([
     transforms.ToTensor(),
     transforms.Normalize(
-        mean=[0.485, 0.456, 0.406],
-        std=[0.229, 0.224, 0.225]
+        mean=[0.485,0.456,0.406],
+        std=[0.229,0.224,0.225]
     )
 ])
 
-# ================= VIDEO PROCESSING =================
+# ---------------- VIDEO PROCESSING ----------------
 def process_video(video_path):
-    cap = cv2.VideoCapture(video_path)
 
-    fps = cap.get(cv2.CAP_PROP_FPS)
-    if fps == 0:
-        fps = 25
+    cap=cv2.VideoCapture(video_path)
 
-    step = max(1, int(fps * 2))  # every 2 seconds
-    frame_count = 0
-    processed = 0
-    total_count = 0
-    heatmap_saved = False
+    fps=cap.get(cv2.CAP_PROP_FPS)
+    if fps==0:
+        fps=25
 
-    while cap.isOpened() and processed < 10:
-        ret, frame = cap.read()
+    step=max(1,int(fps*2))
+
+    frame_count=0
+    processed=0
+    total_count=0
+    heatmap=None
+
+    while cap.isOpened() and processed<10:
+
+        ret,frame=cap.read()
         if not ret:
             break
 
-        frame_count += 1
-        if frame_count % step != 0:
+        frame_count+=1
+        if frame_count%step!=0:
             continue
 
-        processed += 1
-        h, w = frame.shape[:2]
+        processed+=1
 
-        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        img = transform(rgb).unsqueeze(0).to(device)
+        h,w=frame.shape[:2]
+
+        rgb=cv2.cvtColor(frame,cv2.COLOR_BGR2RGB)
+        img=transform(rgb).unsqueeze(0).to(device)
 
         with torch.no_grad():
-            density = torch.relu(model(img))
+            density=torch.relu(model(img))
 
-        count = int(density.sum().item())
-        total_count += count
+        count=int(density.sum().item())
+        total_count+=count
 
-        if not heatmap_saved:
-            density_map = density.squeeze().cpu().numpy()
-            density_map = cv2.resize(density_map, (w, h))
+        if heatmap is None:
 
-            heatmap = cv2.normalize(density_map, None, 0, 255, cv2.NORM_MINMAX)
-            heatmap = cv2.applyColorMap(
-                heatmap.astype(np.uint8), cv2.COLORMAP_JET
+            density_map=density.squeeze().cpu().numpy()
+            density_map=cv2.resize(density_map,(w,h))
+
+            heatmap=cv2.normalize(density_map,None,0,255,cv2.NORM_MINMAX)
+            heatmap=cv2.applyColorMap(
+                heatmap.astype(np.uint8),cv2.COLORMAP_JET
             )
 
-            overlay = cv2.addWeighted(frame, 0.6, heatmap, 0.4, 0)
-            cv2.imwrite("static/output.jpg", overlay)
-
-            heatmap_saved = True
+            heatmap=cv2.addWeighted(frame,0.6,heatmap,0.4,0)
 
     cap.release()
 
-    avg_count = total_count // max(1, processed)
-    return avg_count
+    avg_count=total_count//max(1,processed)
 
-# ================= FLASK ROUTE =================
-@app.route("/", methods=["GET", "POST"])
-def index():
-    result = None
-    image = None
+    return avg_count,heatmap
 
-    if request.method == "POST":
-        file = request.files.get("file")
-        if file:
-            video_path = os.path.join(STATIC_FOLDER, file.filename)
-            file.save(video_path)
+# ---------------- SIDEBAR ----------------
+st.sidebar.header("Upload Video")
 
-            if file.filename.lower().endswith((".mp4", ".avi", ".mov")):
-                result = process_video(video_path)
-                image = True
+uploaded_file = st.sidebar.file_uploader(
+    "Upload Crowd Video",
+    type=["mp4","avi","mov"]
+)
 
-    return render_template("index.html", result=result, image=image)
+# ---------------- DASHBOARD ----------------
+if uploaded_file:
 
-# ================= RUN =================
-if __name__ == "__main__":
-    app.run(debug=True)
-=======
-import os
-import cv2
-import torch
-import torch.nn as nn
-import numpy as np
-from flask import Flask, render_template, request
-from torchvision import models, transforms
+    temp_path="temp_video.mp4"
 
-# ================= FLASK CONFIG =================
-app = Flask(__name__)
-STATIC_FOLDER = "static"
-os.makedirs(STATIC_FOLDER, exist_ok=True)
+    with open(temp_path,"wb") as f:
+        f.write(uploaded_file.read())
 
-device = torch.device("cpu")
+    with st.spinner("Analyzing crowd density..."):
+        count,heatmap=process_video(temp_path)
 
-# ================= CSRNet MODEL =================
-class CSRNet(nn.Module):
-    def __init__(self):
-        super().__init__()
-        vgg = models.vgg16(weights=None)
-        self.frontend = nn.Sequential(*list(vgg.features.children())[:23])
-        self.backend = nn.Sequential(
-            nn.Conv2d(512, 512, 3, padding=2, dilation=2), nn.ReLU(),
-            nn.Conv2d(512, 512, 3, padding=2, dilation=2), nn.ReLU(),
-            nn.Conv2d(512, 512, 3, padding=2, dilation=2), nn.ReLU(),
-            nn.Conv2d(512, 256, 3, padding=2, dilation=2), nn.ReLU(),
-            nn.Conv2d(256, 128, 3, padding=2, dilation=2), nn.ReLU(),
-            nn.Conv2d(128, 64, 3, padding=2, dilation=2), nn.ReLU(),
+    col1,col2=st.columns(2)
+
+    with col1:
+        st.subheader("Crowd Heatmap")
+        st.image(heatmap,channels="BGR")
+
+    with col2:
+        st.subheader("Crowd Statistics")
+
+        st.metric(
+            label="Estimated Crowd Count",
+            value=count
         )
-        self.output_layer = nn.Conv2d(64, 1, 1)
 
-    def forward(self, x):
-        x = self.frontend(x)
-        x = self.backend(x)
-        x = self.output_layer(x)
-        return x
+        if count<50:
+            st.success("Low Crowd Density")
+        elif count<150:
+            st.warning("Medium Crowd Density")
+        else:
+            st.error("High Crowd Density")
 
-# ================= LOAD MODEL =================
-print("Loading model_5.pth...")
-model = CSRNet().to(device)
-model.load_state_dict(torch.load("model_5.pth", map_location=device))
-model.eval()
-print("Model loaded successfully")
-
-# ================= TRANSFORM =================
-transform = transforms.Compose([
-    transforms.ToTensor(),
-    transforms.Normalize(
-        mean=[0.485, 0.456, 0.406],
-        std=[0.229, 0.224, 0.225]
-    )
-])
-
-# ================= VIDEO PROCESSING =================
-def process_video(video_path):
-    cap = cv2.VideoCapture(video_path)
-
-    fps = cap.get(cv2.CAP_PROP_FPS)
-    if fps == 0:
-        fps = 25
-
-    step = max(1, int(fps * 2))  # every 2 seconds
-    frame_count = 0
-    processed = 0
-    total_count = 0
-    heatmap_saved = False
-
-    while cap.isOpened() and processed < 10:
-        ret, frame = cap.read()
-        if not ret:
-            break
-
-        frame_count += 1
-        if frame_count % step != 0:
-            continue
-
-        processed += 1
-        h, w = frame.shape[:2]
-
-        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        img = transform(rgb).unsqueeze(0).to(device)
-
-        with torch.no_grad():
-            density = torch.relu(model(img))
-
-        count = int(density.sum().item())
-        total_count += count
-
-        if not heatmap_saved:
-            density_map = density.squeeze().cpu().numpy()
-            density_map = cv2.resize(density_map, (w, h))
-
-            heatmap = cv2.normalize(density_map, None, 0, 255, cv2.NORM_MINMAX)
-            heatmap = cv2.applyColorMap(
-                heatmap.astype(np.uint8), cv2.COLORMAP_JET
-            )
-
-            overlay = cv2.addWeighted(frame, 0.6, heatmap, 0.4, 0)
-            cv2.imwrite("static/output.jpg", overlay)
-
-            heatmap_saved = True
-
-    cap.release()
-
-    avg_count = total_count // max(1, processed)
-    return avg_count
-
-# ================= FLASK ROUTE =================
-@app.route("/", methods=["GET", "POST"])
-def index():
-    result = None
-    image = None
-
-    if request.method == "POST":
-        file = request.files.get("file")
-        if file:
-            video_path = os.path.join(STATIC_FOLDER, file.filename)
-            file.save(video_path)
-
-            if file.filename.lower().endswith((".mp4", ".avi", ".mov")):
-                result = process_video(video_path)
-                image = True
-
-    return render_template("index.html", result=result, image=image)
-
-# ================= RUN =================
-if __name__ == "__main__":
-    app.run(debug=True)
->>>>>>> daeb856 (interface)
+else:
+    st.info("Upload a video to start analysis.")
