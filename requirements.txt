@@ -13,4 +13,5 @@ flask
 streamlit
 twilio
 requests
+altair==4.2.2
 pyyaml
